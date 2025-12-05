@@ -5,6 +5,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const canvas = document.getElementById("myCanvas");
   const ctx = canvas.getContext("2d");
   const downloadBtn = document.getElementById("downloadBtn");
+  const canvasShell = document.querySelector(".canvas-shell");
+  const body = document.body;
+  const layout = document.querySelector(".layout");
+  const trayToggleBtn = document.getElementById("trayToggleBtn");
+  const bottomTray = document.getElementById("bottomTray");
+  const introOverlay = document.getElementById("introOverlay");
+  const introCanvas = document.getElementById("introCanvas");
+  const introCtx = introCanvas ? introCanvas.getContext("2d") : null;
 
 downloadBtn.addEventListener("click", () => {
   const link = document.createElement("a");
@@ -21,14 +29,33 @@ downloadBtn.addEventListener("click", () => {
 function setCanvasSize() {
   const ratio = window.devicePixelRatio || 1;
 
-  canvas.width  = window.innerWidth  * ratio;
-  canvas.height = window.innerHeight * ratio;
+  const shellRect = canvasShell.getBoundingClientRect();
 
-  canvas.style.width  = window.innerWidth  + "px";
-  canvas.style.height = window.innerHeight + "px";
+  canvas.width  = shellRect.width  * ratio;
+  canvas.height = shellRect.height * ratio;
+
+  canvas.style.width  = shellRect.width + "px";
+  canvas.style.height = shellRect.height + "px";
 
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   drawAll();
+}
+
+function setIntroCanvasSize() {
+  if (!introCanvas || !introCtx) return;
+  const ratio = window.devicePixelRatio || 1;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  introCanvas.width  = w * ratio;
+  introCanvas.height = h * ratio;
+  introCanvas.style.width  = w + "px";
+  introCanvas.style.height = h + "px";
+  introCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  drawScene(introCtx, introCanvas, {
+    tiling: true,
+    density: 2,
+    scale: getPatternScale()
+  });
 }
 
 
@@ -60,6 +87,20 @@ function setCanvasSize() {
   let SUB_COLOR    = subColorInput.value;
   let LIGHT_COLOR  = lightColorInput.value;
 
+  // 초기 상태 기억
+  const DEFAULTS = {
+    leafCount: leafCountInput.value,
+    scale: scaleSlider.value,
+    leafStart: leafStartInput.value,
+    bugCount: bugCountInput.value,
+    line: lineColorInput.value,
+    main: mainColorInput.value,
+    accent: accentColorInput.value,
+    sub: subColorInput.value,
+    light: lightColorInput.value,
+    density: densitySlider.value
+  };
+
   // 타일 모드 상태
   let isTiling = false;
 
@@ -72,63 +113,63 @@ function setCanvasSize() {
           패턴 함수들
   ======================== */
 
-  function drawLeaf(inner, outer, layers) {
+  function drawLeaf(inner, outer, layers, targetCtx = ctx) {
     const PAL = getPalette();
     const middle = (inner + outer) / 2;
     const half   = (outer - inner) / 2;
     const H      = half * 0.7;
 
-    ctx.save();
-    ctx.translate(middle, 0);
+    targetCtx.save();
+    targetCtx.translate(middle, 0);
 
     for (let j = 0; j < layers; j++) {
       const t = j / (layers - 1 || 1);
       const w = half * (1 - t * 0.55);
       const h = H    * (1 - t * 0.85);
 
-      ctx.beginPath();
-      ctx.moveTo(-w, 0);
-      ctx.quadraticCurveTo(0, -h, w, 0);
-      ctx.quadraticCurveTo(0,  h, -w, 0);
+      targetCtx.beginPath();
+      targetCtx.moveTo(-w, 0);
+      targetCtx.quadraticCurveTo(0, -h, w, 0);
+      targetCtx.quadraticCurveTo(0,  h, -w, 0);
 
-      ctx.fillStyle = PAL[(j + 1) % PAL.length];
-      ctx.fill();
+      targetCtx.fillStyle = PAL[(j + 1) % PAL.length];
+      targetCtx.fill();
 
-      ctx.strokeStyle = LINE_COLOR;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      targetCtx.strokeStyle = LINE_COLOR;
+      targetCtx.lineWidth = 1;
+      targetCtx.stroke();
     }
-    ctx.restore();
+    targetCtx.restore();
   }
 
   // 중심이 (0,0)이라고 가정하고 그림
-  function drawLeaves(scale) {
+  function drawLeaves(scale, targetCtx = ctx) {
     const count = Number(leafCountInput.value);
     const start = Number(leafStartInput.value) * scale;
     const outer = 190 * scale;
 
-    ctx.save();
+    targetCtx.save();
     const step = Math.PI * 2 / count;
     for (let i = 0; i < count; i++) {
-      ctx.rotate(step);
-      drawLeaf(start, outer, 4);
+      targetCtx.rotate(step);
+      drawLeaf(start, outer, 4, targetCtx);
     }
-    ctx.restore();
+    targetCtx.restore();
   }
 
-  function drawOuterRing(scale) {
+  function drawOuterRing(scale, targetCtx = ctx) {
     const count = Number(leafCountInput.value);
     const step = Math.PI * 2 / count;
 
-    ctx.save();
+    targetCtx.save();
 
-    ctx.beginPath();
-    ctx.arc(0, 0, 200 * scale, 0, Math.PI * 2);
-    ctx.strokeStyle = LINE_COLOR;
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.arc(0, 0, 200 * scale, 0, Math.PI * 2);
+    targetCtx.strokeStyle = LINE_COLOR;
+    targetCtx.lineWidth = 1;
+    targetCtx.stroke();
 
-    ctx.fillStyle = SUB_COLOR;
+    targetCtx.fillStyle = SUB_COLOR;
 
     const arcs = [
       [210, 0, 20, -10, 120],
@@ -138,20 +179,20 @@ function setCanvasSize() {
     ];
 
     for (let i = 0; i < count; i++) {
-      ctx.rotate(step);
+      targetCtx.rotate(step);
       arcs.forEach(([x, y, r, s, e]) => {
-        ctx.beginPath();
-        ctx.arc(x * scale, y * scale, r * scale, s * Math.PI / 180, e * Math.PI / 180);
-        ctx.fill();
-        ctx.strokeStyle = LINE_COLOR;
-        ctx.stroke();
+        targetCtx.beginPath();
+        targetCtx.arc(x * scale, y * scale, r * scale, s * Math.PI / 180, e * Math.PI / 180);
+        targetCtx.fill();
+        targetCtx.strokeStyle = LINE_COLOR;
+        targetCtx.stroke();
       });
     }
 
-    ctx.restore();
+    targetCtx.restore();
   }
 
-  function drawCenterFlower(scale) {
+  function drawCenterFlower(scale, targetCtx = ctx) {
     const leafNum = Number(leafCountInput.value);
     const PAL = getPalette();
 
@@ -159,169 +200,169 @@ function setCanvasSize() {
     const TOTAL = Math.max(8, Math.round(leafNum / 2));
     const localS = 0.45 + (Math.min(leafNum, 64) / 64) * 0.25;
 
-    ctx.save();
-    ctx.scale(scale * localS, scale * localS);
+    targetCtx.save();
+    targetCtx.scale(scale * localS, scale * localS);
 
-    ctx.strokeStyle = LINE_COLOR;
-    ctx.lineWidth = 1 / (scale * localS);
+    targetCtx.strokeStyle = LINE_COLOR;
+    targetCtx.lineWidth = 1 / (scale * localS);
 
     // 작은 원 링
     for (let i = 0; i < C; i++) {
-      ctx.save();
-      ctx.rotate((Math.PI * 2 / C) * i);
+      targetCtx.save();
+      targetCtx.rotate((Math.PI * 2 / C) * i);
 
-      ctx.beginPath();
-      ctx.arc(10, 0, 10, 0, Math.PI * 2);
-      ctx.fillStyle = PAL[i % PAL.length];
-      ctx.fill();
-      ctx.stroke();
+      targetCtx.beginPath();
+      targetCtx.arc(10, 0, 10, 0, Math.PI * 2);
+      targetCtx.fillStyle = PAL[i % PAL.length];
+      targetCtx.fill();
+      targetCtx.stroke();
 
-      ctx.beginPath();
-      ctx.arc(24, 0, 12, 0, Math.PI * 2);
-      ctx.fillStyle = PAL[(i + 1) % PAL.length];
-      ctx.fill();
-      ctx.stroke();
+      targetCtx.beginPath();
+      targetCtx.arc(24, 0, 12, 0, Math.PI * 2);
+      targetCtx.fillStyle = PAL[(i + 1) % PAL.length];
+      targetCtx.fill();
+      targetCtx.stroke();
 
-      ctx.restore();
+      targetCtx.restore();
     }
 
     // 꽃잎 / 꾸밈
     for (let i = 0; i < TOTAL; i++) {
-      ctx.save();
-      ctx.rotate((Math.PI * 2 / TOTAL) * i);
+      targetCtx.save();
+      targetCtx.rotate((Math.PI * 2 / TOTAL) * i);
 
       if (i % 2 === 0) {
         // 짧은 꽃잎 (메인)
-        ctx.beginPath();
-        ctx.moveTo(30, 30);
-        ctx.quadraticCurveTo(50, 30, 60, 60);
-        ctx.quadraticCurveTo(30, 50, 30, 30);
-        ctx.fillStyle = MAIN_COLOR;
-        ctx.fill();
-        ctx.stroke();
+        targetCtx.beginPath();
+        targetCtx.moveTo(30, 30);
+        targetCtx.quadraticCurveTo(50, 30, 60, 60);
+        targetCtx.quadraticCurveTo(30, 50, 30, 30);
+        targetCtx.fillStyle = MAIN_COLOR;
+        targetCtx.fill();
+        targetCtx.stroke();
 
         // 긴 꽃잎 (서브)
-        ctx.beginPath();
-        ctx.moveTo(30, 30);
-        ctx.quadraticCurveTo(70, 30, 120, 120);
-        ctx.quadraticCurveTo(30, 70, 30, 30);
-        ctx.fillStyle = SUB_COLOR;
-        ctx.fill();
-        ctx.stroke();
+        targetCtx.beginPath();
+        targetCtx.moveTo(30, 30);
+        targetCtx.quadraticCurveTo(70, 30, 120, 120);
+        targetCtx.quadraticCurveTo(30, 70, 30, 30);
+        targetCtx.fillStyle = SUB_COLOR;
+        targetCtx.fill();
+        targetCtx.stroke();
       } else {
         // 꾸밈 잎 (보조)
-        ctx.beginPath();
-        ctx.moveTo(150, 0);
-        ctx.quadraticCurveTo(175, -40, 200, 0);
-        ctx.quadraticCurveTo(175, 40, 150, 0);
-        ctx.fillStyle = ACCENT_COLOR;
-        ctx.fill();
-        ctx.stroke();
+        targetCtx.beginPath();
+        targetCtx.moveTo(150, 0);
+        targetCtx.quadraticCurveTo(175, -40, 200, 0);
+        targetCtx.quadraticCurveTo(175, 40, 150, 0);
+        targetCtx.fillStyle = ACCENT_COLOR;
+        targetCtx.fill();
+        targetCtx.stroke();
       }
 
-      ctx.restore();
+      targetCtx.restore();
     }
 
-    ctx.restore();
+    targetCtx.restore();
   }
 
-  function drawBug2(scale) {
+  function drawBug2(scale, targetCtx = ctx) {
     const s = 0.18 * scale;
-    ctx.fillStyle = MAIN_COLOR;
-    ctx.strokeStyle = LINE_COLOR;
-    ctx.lineWidth = 1;
+    targetCtx.fillStyle = MAIN_COLOR;
+    targetCtx.strokeStyle = LINE_COLOR;
+    targetCtx.lineWidth = 1;
 
     // 왼쪽 날개
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(-130 * s, -170 * s, -190 * s, -90 * s, -110 * s, 0);
-    ctx.bezierCurveTo(-190 * s, 90 * s, -130 * s, 170 * s, 0, 100 * s);
-    ctx.fill();
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(0, 0);
+    targetCtx.bezierCurveTo(-130 * s, -170 * s, -190 * s, -90 * s, -110 * s, 0);
+    targetCtx.bezierCurveTo(-190 * s, 90 * s, -130 * s, 170 * s, 0, 100 * s);
+    targetCtx.fill();
+    targetCtx.stroke();
 
     // 오른쪽 날개
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(130 * s, -170 * s, 190 * s, -90 * s, 110 * s, 0);
-    ctx.bezierCurveTo(190 * s, 90 * s, 130 * s, 170 * s, 0, 100 * s);
-    ctx.fill();
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(0, 0);
+    targetCtx.bezierCurveTo(130 * s, -170 * s, 190 * s, -90 * s, 110 * s, 0);
+    targetCtx.bezierCurveTo(190 * s, 90 * s, 130 * s, 170 * s, 0, 100 * s);
+    targetCtx.fill();
+    targetCtx.stroke();
 
     // 몸통
-    ctx.beginPath();
-    ctx.moveTo(0, -90 * s);
-    ctx.lineTo(0, 180 * s);
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(0, -90 * s);
+    targetCtx.lineTo(0, 180 * s);
+    targetCtx.stroke();
 
     // 더듬이
-    ctx.beginPath();
-    ctx.moveTo(0, -90 * s);
-    ctx.bezierCurveTo(-30 * s, -140 * s, -50 * s, -180 * s, -40 * s, -200 * s);
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(0, -90 * s);
+    targetCtx.bezierCurveTo(-30 * s, -140 * s, -50 * s, -180 * s, -40 * s, -200 * s);
+    targetCtx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(0, -90 * s);
-    ctx.bezierCurveTo(30 * s, -140 * s, 50 * s, -180 * s, 40 * s, -200 * s);
-    ctx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(0, -90 * s);
+    targetCtx.bezierCurveTo(30 * s, -140 * s, 50 * s, -180 * s, 40 * s, -200 * s);
+    targetCtx.stroke();
   }
 
-  function drawBugsRing(scale) {
+  function drawBugsRing(scale, targetCtx = ctx) {
     const count = Number(bugCountInput.value);
     const step = Math.PI * 2 / count;
     const radius = Number(leafStartInput.value) * scale + 40 * scale;
 
-    ctx.save();
+    targetCtx.save();
 
     for (let i = 0; i < count; i++) {
-      ctx.save();
-      ctx.rotate(step * i + step / 2);
-      ctx.translate(radius, 0);
-      ctx.rotate(Math.PI / 2);
-      drawBug2(scale);
-      ctx.restore();
+      targetCtx.save();
+      targetCtx.rotate(step * i + step / 2);
+      targetCtx.translate(radius, 0);
+      targetCtx.rotate(Math.PI / 2);
+      drawBug2(scale, targetCtx);
+      targetCtx.restore();
     }
-    ctx.restore();
+    targetCtx.restore();
   }
 
-  function drawTopRedPetals(scale) {
+  function drawTopRedPetals(scale, targetCtx = ctx) {
     const count = Number(leafCountInput.value);
     const step = Math.PI * 2 / count;
 
-    ctx.save();
+    targetCtx.save();
 
     for (let i = 0; i < count; i++) {
-      ctx.save();
-      ctx.rotate(step * i);
+      targetCtx.save();
+      targetCtx.rotate(step * i);
 
-      ctx.beginPath();
-      ctx.moveTo(0, 90 * scale);
-      ctx.quadraticCurveTo(10 * scale, 70 * scale, 0, 50 * scale);
-      ctx.quadraticCurveTo(-10 * scale, 70 * scale, 0, 90 * scale);
-      ctx.fillStyle = MAIN_COLOR;
-      ctx.fill();
-      ctx.stroke();
+      targetCtx.beginPath();
+      targetCtx.moveTo(0, 90 * scale);
+      targetCtx.quadraticCurveTo(10 * scale, 70 * scale, 0, 50 * scale);
+      targetCtx.quadraticCurveTo(-10 * scale, 70 * scale, 0, 90 * scale);
+      targetCtx.fillStyle = MAIN_COLOR;
+      targetCtx.fill();
+      targetCtx.stroke();
 
-      ctx.restore();
+      targetCtx.restore();
     }
 
-    ctx.restore();
+    targetCtx.restore();
   }
 
   /* ========================
         만다라 하나 그리기
         (중심 (cx, cy), 스케일 s)
   ======================== */
-  function drawMandalaAt(cx, cy, s) {
-    ctx.save();
-    ctx.translate(cx, cy);
+  function drawMandalaAt(cx, cy, s, targetCtx = ctx) {
+    targetCtx.save();
+    targetCtx.translate(cx, cy);
 
-    drawOuterRing(s);
-    drawLeaves(s);
-    drawCenterFlower(s);
-    drawBugsRing(s);
-    drawTopRedPetals(s);
+    drawOuterRing(s, targetCtx);
+    drawLeaves(s, targetCtx);
+    drawCenterFlower(s, targetCtx);
+    drawBugsRing(s, targetCtx);
+    drawTopRedPetals(s, targetCtx);
 
-    ctx.restore();
+    targetCtx.restore();
   }
 
   /* ========================
@@ -329,20 +370,21 @@ function setCanvasSize() {
   ======================== */
 
     // 전체 그리기
-  function drawAll() {
-    const rect = canvas.getBoundingClientRect();
-    ctx.clearRect(0, 0, rect.width, rect.height);
+  function drawScene(targetCtx = ctx, targetCanvas = canvas, options = {}) {
+    const rect = targetCanvas.getBoundingClientRect();
+    targetCtx.clearRect(0, 0, rect.width, rect.height);
 
-    const baseScale = getPatternScale();
+    const baseScale = options.scale ?? getPatternScale();
+    const tiling = options.tiling ?? isTiling;
+    const density = options.density ?? Number(densitySlider.value); // 1~5
 
     // 🔹 타일 배치 OFF일 때: 가운데 하나만
-    if (!isTiling) {
-      drawMandalaAt(rect.width / 2, rect.height / 2, baseScale);
+    if (!tiling) {
+      drawMandalaAt(rect.width / 2, rect.height / 2, baseScale, targetCtx);
       return;
     }
 
     // 🔹 타일 배치 ON일 때: 사선(지그재그) 그리드
-    const density = Number(densitySlider.value); // 1~5
     const mandalaScale = baseScale * (1.1 - density * 0.15);
 
     // 패턴 간 기본 간격 (대략 지름 기준)
@@ -361,9 +403,13 @@ function setCanvasSize() {
       const endX   = rect.width + spacingX;
 
       for (let x = startX; x < endX; x += spacingX) {
-        drawMandalaAt(x, y, mandalaScale);
+        drawMandalaAt(x, y, mandalaScale, targetCtx);
       }
     }
+  }
+
+  function drawAll() {
+    drawScene();
   }
 
   /* ========================
@@ -450,13 +496,43 @@ function setCanvasSize() {
     drawAll();
   });
 
-  redrawBtn.addEventListener("click", drawAll);
+  function resetToDefaults() {
+    leafCountInput.value = DEFAULTS.leafCount;
+    scaleSlider.value = DEFAULTS.scale;
+    leafStartInput.value = DEFAULTS.leafStart;
+    bugCountInput.value = DEFAULTS.bugCount;
+    lineColorInput.value = DEFAULTS.line;
+    mainColorInput.value = DEFAULTS.main;
+    accentColorInput.value = DEFAULTS.accent;
+    subColorInput.value = DEFAULTS.sub;
+    lightColorInput.value = DEFAULTS.light;
+    densitySlider.value = DEFAULTS.density;
+
+    LINE_COLOR   = DEFAULTS.line;
+    MAIN_COLOR   = DEFAULTS.main;
+    ACCENT_COLOR = DEFAULTS.accent;
+    SUB_COLOR    = DEFAULTS.sub;
+    LIGHT_COLOR  = DEFAULTS.light;
+
+    leafCountText.textContent = leafCountInput.value;
+    scaleText.textContent = scaleSlider.value + "%";
+    densityText.textContent = densitySlider.value;
+
+    isTiling = false;
+    tileToggleBtn.textContent = "타일 배치: OFF";
+    body.classList.remove("is-tiling");
+
+    setCanvasSize();
+  }
+
+  redrawBtn.addEventListener("click", resetToDefaults);
 
   // 타일 배치 토글 버튼
   tileToggleBtn.addEventListener("click", () => {
     isTiling = !isTiling;
     tileToggleBtn.textContent = isTiling ? "타일 배치: ON" : "타일 배치: OFF";
-    drawAll();
+    body.classList.toggle("is-tiling", isTiling);
+    setCanvasSize();
   });
 
   // 밀도 슬라이더
@@ -465,7 +541,37 @@ function setCanvasSize() {
     if (isTiling) drawAll();
   });
 
+  // 오프닝 화면
+  function hideIntro() {
+    if (!introOverlay) return;
+    introOverlay.classList.add("is-hidden");
+    body.classList.remove("intro-active");
+  }
+
+  if (introOverlay) {
+    body.classList.add("intro-active");
+    setIntroCanvasSize();
+
+    introOverlay.addEventListener("click", hideIntro);
+    introOverlay.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        hideIntro();
+      }
+    });
+  }
+
+  // 하단 트레이 토글
+  trayToggleBtn.addEventListener("click", () => {
+    const isOpen = body.classList.toggle("tray-open");
+    trayToggleBtn.setAttribute("aria-expanded", isOpen);
+  });
+
   window.addEventListener("resize", setCanvasSize);
+  window.addEventListener("resize", () => {
+    if (!introOverlay || introOverlay.classList.contains("is-hidden")) return;
+    setIntroCanvasSize();
+  });
 
   // 초기 세팅 + 렌더
   setCanvasSize();
